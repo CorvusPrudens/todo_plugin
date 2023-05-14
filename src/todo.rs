@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Path, State},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, ModelTrait,
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, ModelTrait,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
