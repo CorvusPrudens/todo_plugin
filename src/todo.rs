@@ -5,7 +5,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-// use tokio::sync::Mutex;
 use hyper::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -78,13 +77,13 @@ pub(super) async fn search_todos(
     query: Query<TodoSearchQuery>,
 ) -> Json<Vec<Todo>> {
     Json(
-        state.store
+        state
+            .store
             .lock()
             .await
             .iter()
             .filter(|todo| {
-                todo.value.to_lowercase() == query.value.to_lowercase()
-                    && todo.done == query.done
+                todo.value.to_lowercase() == query.value.to_lowercase() && todo.done == query.done
             })
             .cloned()
             .collect(),
@@ -176,8 +175,18 @@ pub(super) async fn mark_done(
     path = "/todo/{id}",
     responses(
         (status = 200, description = "Todo marked done successfully"),
-        (status = 401, description = "Unauthorized to delete Todo", body = TodoError, example = json!(TodoError::Unauthorized(String::from("missing api key")))),
-        (status = 404, description = "Todo not found", body = TodoError, example = json!(TodoError::NotFound(String::from("id = 1"))))
+        (
+            status = 401, 
+            description = "Unauthorized to delete Todo", 
+            body = TodoError, 
+            example = json!(TodoError::Unauthorized(String::from("missing api key")))
+        ),
+        (
+            status = 404, 
+            description = "Todo not found", 
+            body = TodoError, 
+            example = json!(TodoError::NotFound(String::from("id = 1")))
+        )
     ),
     params(
         ("id" = i32, Path, description = "Todo database id")

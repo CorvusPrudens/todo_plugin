@@ -22,7 +22,7 @@ async fn main() -> Result<(), Error> {
 
     let manifest = plugin::Manifest::builder()
         .schema_version("v1")
-        .name_for_human("Todo List")
+        .name_for_human("To-do List")
         .name_for_model("todo list")
         .description_for_human("Create, update, and complete todo lists!")
         .description_for_model("plugin for creating, updating, and removing todo lists")
