@@ -2,239 +2,136 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
-use hyper::{HeaderMap, StatusCode};
+use sea_orm::{
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, Condition, EntityTrait, QueryFilter, ModelTrait,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::PluginState;
+use crate::{entities, PluginState};
 
-/// Item to do.
+/// To-Do item
 #[derive(Serialize, Deserialize, ToSchema, Clone)]
-pub(super) struct Todo {
+pub struct Todo {
     id: i32,
     #[schema(example = "Buy groceries")]
-    value: String,
-    done: bool,
+    item: String,
 }
 
-/// Todo operation errors
-#[derive(Serialize, Deserialize, ToSchema)]
-pub(super) enum TodoError {
-    /// Todo already exists conflict.
-    #[schema(example = "Todo already exists")]
-    Conflict(String),
-    /// Todo not found by id.
-    #[schema(example = "id = 1")]
-    NotFound(String),
-    /// Todo operation unauthorized
-    #[schema(example = "missing api key")]
-    Unauthorized(String),
-}
-
-/// List all Todo items
-///
-/// List all Todo items from in-memory storage.
-#[utoipa::path(
-    get,
-    path = "/todo",
-    responses(
-        (status = 200, description = "List all todos successfully", body = [Todo])
-    )
-)]
-pub(super) async fn list_todos(State(state): State<Arc<PluginState>>) -> Json<Vec<Todo>> {
-    let todos = state.store.lock().await.clone();
-
-    Json(todos)
-}
-
-/// Todo search query
 #[derive(Deserialize, IntoParams)]
-pub(super) struct TodoSearchQuery {
-    /// Search by value. Search is incase sensitive.
-    value: String,
-    /// Search by `done` status.
-    done: bool,
+pub struct Username {
+    /// The name of the user.
+    username: String,
 }
 
-/// Search Todos by query params.
-///
-/// Search `Todo`s by query params and return matching `Todo`s.
+impl From<crate::entities::todo::Model> for Todo {
+    fn from(value: crate::entities::todo::Model) -> Self {
+        Self {
+            id: value.id,
+            item: value.item,
+        }
+    }
+}
+
+/// List all Todo items for the given user.
 #[utoipa::path(
     get,
-    path = "/todo/search",
-    params(
-        TodoSearchQuery
-    ),
+    path = "/todo/{username}",
+    params(Username),
     responses(
-        (status = 200, description = "List matching todos by query", body = [Todo])
+        (status = 200, description = "List user's To-Dos", body = [Todo]),
+        (status = 500, description = "Database operation error"),
     )
 )]
-pub(super) async fn search_todos(
+pub async fn list_todos(
     State(state): State<Arc<PluginState>>,
-    query: Query<TodoSearchQuery>,
-) -> Json<Vec<Todo>> {
-    Json(
-        state
-            .store
-            .lock()
+    Path(Username { username }): Path<Username>,
+) -> Result<Json<Vec<Todo>>, StatusCode> {
+    Ok(Json(
+        entities::todo::Entity::find()
+            .filter(entities::todo::Column::Username.eq(&username))
+            .all(&state.database)
             .await
-            .iter()
-            .filter(|todo| {
-                todo.value.to_lowercase() == query.value.to_lowercase() && todo.done == query.done
-            })
-            .cloned()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .into_iter()
+            .map(|model| model.into())
             .collect(),
-    )
+    ))
 }
 
-/// Create new Todo
-///
-/// Tries to create a new Todo item to in-memory storage or fails with 409 conflict if already exists.
+/// To-Do create request
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+pub struct TodoCreate {
+    #[schema(example = "Buy groceries")]
+    item: String,
+}
+
+/// Adds a new To-Do item to the database
 #[utoipa::path(
     post,
-    path = "/todo",
-    request_body = Todo,
+    path = "/todo/:username",
+    params(Username),
+    request_body = TodoCreate,
     responses(
-        (status = 201, description = "Todo item created successfully", body = Todo),
-        (status = 409, description = "Todo already exists", body = TodoError)
+        (status = 201, description = "Todo item created successfully"),
+        (status = 500, description = "Database operation error"),
     )
 )]
-pub(super) async fn create_todo(
+pub async fn create_todo(
     State(state): State<Arc<PluginState>>,
-    Json(todo): Json<Todo>,
+    Path(Username { username }): Path<Username>,
+    Json(todo): Json<TodoCreate>,
 ) -> impl IntoResponse {
-    let mut todos = state.store.lock().await;
+    let mut new_todo = entities::todo::ActiveModel::new();
+    new_todo.username = sea_orm::Set(username);
+    new_todo.item = sea_orm::Set(todo.item);
 
-    todos
-        .iter_mut()
-        .find(|existing_todo| existing_todo.id == todo.id)
-        .map(|found| {
-            (
-                StatusCode::CONFLICT,
-                Json(TodoError::Conflict(format!(
-                    "todo already exists: {}",
-                    found.id
-                ))),
-            )
-                .into_response()
-        })
-        .unwrap_or_else(|| {
-            todos.push(todo.clone());
-
-            (StatusCode::CREATED, Json(todo)).into_response()
-        })
+    match new_todo.insert(&state.database).await {
+        Ok(_) => StatusCode::CREATED,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
-/// Mark Todo item done by id
-///
-/// Mark Todo item done by given id. Return only status 200 on success or 404 if Todo is not found.
+/// To-Do delete request
+#[derive(Serialize, Deserialize, ToSchema, Clone)]
+pub struct TodoDelete {
+    id: i32,
+}
+
+/// Delete To-Do by the given ID.
 #[utoipa::path(
     put,
-    path = "/todo/{id}",
+    path = "/todo/:username",
     responses(
-        (status = 200, description = "Todo marked done successfully"),
-        (status = 404, description = "Todo not found")
+        (status = 200, description = "To-Do deleted successfully"),
+        (status = 403, description = "This user is not permitted to delete the given To-Do"),
+        (status = 404, description = "The given To-Do was not found."),
+        (status = 500, description = "Database operation error"),
     ),
-    params(
-        ("id" = i32, Path, description = "Todo database id")
-    ),
-    security(
-        (), // <-- make optional authentication
-        ("api_key" = [])
-    )
+    params(Username),
+    request_body = TodoDelete,
 )]
-pub(super) async fn mark_done(
-    Path(id): Path<i32>,
+pub async fn delete_todo(
     State(state): State<Arc<PluginState>>,
-    headers: HeaderMap,
-) -> StatusCode {
-    if check_api_key(false, headers).is_err() {
-        return StatusCode::UNAUTHORIZED;
+    Path(Username { username }): Path<Username>,
+    Json(TodoDelete { id }): Json<TodoDelete>,
+) -> Result<StatusCode, StatusCode> {
+
+    let todo = entities::todo::Entity::find_by_id(id)
+        .one(&state.database)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    if todo.username != username {
+        return Err(StatusCode::FORBIDDEN);
     }
 
-    let mut todos = state.store.lock().await;
+    todo.delete(&state.database).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    todos
-        .iter_mut()
-        .find(|todo| todo.id == id)
-        .map(|todo| {
-            todo.done = true;
-            StatusCode::OK
-        })
-        .unwrap_or(StatusCode::NOT_FOUND)
-}
-
-/// Delete Todo item by id
-///
-/// Delete Todo item from in-memory storage by id. Returns either 200 success of 404 with TodoError if Todo is not found.
-#[utoipa::path(
-    delete,
-    path = "/todo/{id}",
-    responses(
-        (status = 200, description = "Todo marked done successfully"),
-        (
-            status = 401, 
-            description = "Unauthorized to delete Todo", 
-            body = TodoError, 
-            example = json!(TodoError::Unauthorized(String::from("missing api key")))
-        ),
-        (
-            status = 404, 
-            description = "Todo not found", 
-            body = TodoError, 
-            example = json!(TodoError::NotFound(String::from("id = 1")))
-        )
-    ),
-    params(
-        ("id" = i32, Path, description = "Todo database id")
-    ),
-    security(
-        ("api_key" = [])
-    )
-)]
-pub(super) async fn delete_todo(
-    Path(id): Path<i32>,
-    State(state): State<Arc<PluginState>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    if let Err(error) = check_api_key(true, headers) {
-        return error.into_response();
-    }
-
-    let mut todos = state.store.lock().await;
-
-    let len = todos.len();
-
-    todos.retain(|todo| todo.id != id);
-
-    if todos.len() != len {
-        StatusCode::OK.into_response()
-    } else {
-        (
-            StatusCode::NOT_FOUND,
-            Json(TodoError::NotFound(format!("id = {id}"))),
-        )
-            .into_response()
-    }
-}
-
-// normally you should create a middleware for this but this is sufficient for sake of example.
-fn check_api_key(
-    require_api_key: bool,
-    headers: HeaderMap,
-) -> Result<(), (StatusCode, Json<TodoError>)> {
-    match headers.get("todo_apikey") {
-        Some(header) if header != "utoipa-rocks" => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(TodoError::Unauthorized(String::from("incorrect api key"))),
-        )),
-        None if require_api_key => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(TodoError::Unauthorized(String::from("missing api key"))),
-        )),
-        _ => Ok(()),
-    }
+    Ok(StatusCode::OK)
 }

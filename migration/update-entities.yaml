@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  postgres:
+    image: "postgres:latest"
+    container_name: "entity_postgres"
+    environment:
+      POSTGRES_USER: "entity"
+      POSTGRES_PASSWORD: "entity"
+      POSTGRES_DB: "entity"
+    ports:
+      - "5433:5432"
