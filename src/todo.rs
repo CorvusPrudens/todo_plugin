@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,9 +5,10 @@ use axum::{
     Json,
 };
 use sea_orm::{
-    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, ModelTrait,
+    ActiveModelBehavior, ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{entities, PluginState};
@@ -28,8 +27,8 @@ pub struct Username {
     username: String,
 }
 
-impl From<crate::entities::todo::Model> for Todo {
-    fn from(value: crate::entities::todo::Model) -> Self {
+impl From<entities::todo::Model> for Todo {
+    fn from(value: entities::todo::Model) -> Self {
         Self {
             id: value.id,
             item: value.item,
@@ -120,7 +119,6 @@ pub async fn delete_todo(
     Path(Username { username }): Path<Username>,
     Json(TodoDelete { id }): Json<TodoDelete>,
 ) -> Result<StatusCode, StatusCode> {
-
     let todo = entities::todo::Entity::find_by_id(id)
         .one(&state.database)
         .await
@@ -131,7 +129,9 @@ pub async fn delete_todo(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    todo.delete(&state.database).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    todo.delete(&state.database)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::OK)
 }

@@ -12,7 +12,6 @@ mod entities;
 mod plugin;
 mod todo;
 
-#[derive(Default)]
 pub struct PluginState {
     database: DatabaseConnection,
 }
