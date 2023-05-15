@@ -7,9 +7,9 @@ use std::{
     sync::Arc,
 };
 use utoipa::OpenApi;
+use llm_plugin_utils::{Manifest, ManifestAuth, ManifestApi};
 
 mod entities;
-mod plugin;
 mod todo;
 
 pub struct PluginState {
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Error> {
     let port = 3030;
     let base_url = format!("http://localhost:{port}");
 
-    let manifest = plugin::Manifest::builder()
+    let manifest = Manifest::builder()
         .schema_version(env!("CARGO_PKG_VERSION"))
         .name_for_human("To-Do Plugin")
         .name_for_model("todo")
@@ -31,8 +31,8 @@ async fn main() -> Result<(), Error> {
         .description_for_model(
             "Plugin for managing a TODO list, you can add, remove and view your TODOs.",
         )
-        .auth(plugin::ManifestAuth::None)
-        .api(plugin::ManifestApi::Openapi {
+        .auth(ManifestAuth::None)
+        .api(ManifestApi::Openapi {
             url: format!("{base_url}/openapi.yaml"),
             is_user_authenticated: false,
         })
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Error> {
                 .delete(todo::delete_todo),
         )
         .with_state(state)
-        .merge(plugin::serve_plugin_info(
+        .merge(llm_plugin_utils::serve_plugin_info(
             manifest,
             ApiDoc::openapi(),
             "assets/plugin.png",
