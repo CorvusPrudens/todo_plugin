@@ -1,4 +1,12 @@
-use axum::{body::HttpBody, extract::State, routing::get, Json, Router, response::Response, body::{Full, Bytes}};
+use axum::{
+    body::HttpBody,
+    body::{Bytes, Full},
+    extract::State,
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
+use hyper::StatusCode;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use typed_builder::TypedBuilder;
@@ -104,13 +112,23 @@ async fn serve_manifest(State(state): State<Arc<ServeState>>) -> Json<Manifest> 
     Json::from(state.manifest.clone())
 }
 
-async fn serve_api_docs(State(state): State<Arc<ServeState>>) -> Json<OpenApi> {
-    Json::from(state.openapi.clone())
+async fn serve_api_docs(
+    State(state): State<Arc<ServeState>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    Ok(Response::builder()
+        .header("Content-Type", "application/yaml")
+        .body(Full::from(
+            state
+                .openapi
+                .to_yaml()
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        ))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }
 
-async fn serve_icon(State(state): State<Arc<ServeState>>) -> Response<Full<Bytes>> {
-    Response::builder()
+async fn serve_icon(State(state): State<Arc<ServeState>>) -> Result<impl IntoResponse, StatusCode> {
+    Ok(Response::builder()
         .header("Content-Type", "image/png")
         .body(Full::from(state.logo.clone()))
-        .unwrap()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }

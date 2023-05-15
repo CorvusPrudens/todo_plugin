@@ -72,7 +72,7 @@ pub struct TodoCreate {
 /// Adds a new To-Do item to the database
 #[utoipa::path(
     post,
-    path = "/todo/:username",
+    path = "/todo/{username}",
     params(Username),
     request_body = TodoCreate,
     responses(
@@ -104,7 +104,7 @@ pub struct TodoDelete {
 /// Delete To-Do by the given ID.
 #[utoipa::path(
     put,
-    path = "/todo/:username",
+    path = "/todo/{username}",
     responses(
         (status = 200, description = "To-Do deleted successfully"),
         (status = 403, description = "This user is not permitted to delete the given To-Do"),

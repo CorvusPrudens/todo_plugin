@@ -22,7 +22,7 @@ async fn main() -> Result<(), Error> {
     let base_url = format!("http://localhost:{port}");
 
     let manifest = plugin::Manifest::builder()
-        .schema_version("v1")
+        .schema_version(env!("CARGO_PKG_VERSION"))
         .name_for_human("To-Do Plugin")
         .name_for_model("todo")
         .description_for_human(
@@ -33,10 +33,10 @@ async fn main() -> Result<(), Error> {
         )
         .auth(plugin::ManifestAuth::None)
         .api(plugin::ManifestApi::Openapi {
-            url: format!("{base_url}/openapi.json"),
+            url: format!("{base_url}/openapi.yaml"),
             is_user_authenticated: false,
         })
-        .logo_url(format!("{base_url}/logo.json"))
+        .logo_url(format!("{base_url}/logo.png"))
         .contact_email("support@example.com")
         .legal_info_url("http://example.com/legal")
         .build();
